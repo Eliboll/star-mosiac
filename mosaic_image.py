@@ -56,7 +56,7 @@ class mosaic_image:
         if self.__keypoints == None:
             self.__get_stars()
         
-        max_distance = (self.orignal.shape[0] if self.orignal.shape[0] > self.orignal.shape[1] else self.orignal.shape[1]) * size
+        max_distance = (self.original.shape[0] if self.original.shape[0] > self.original.shape[1] else self.original.shape[1]) * size
         final_map = {}
         for keypoint in self.__keypoints:
             in_range = []
