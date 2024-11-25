@@ -38,6 +38,8 @@ def get_stars(image: np.ndarray) -> list[cv2.KeyPoint]:
 
     # Detect blobs in the processed image
     keypoints = detector.detect(image)
+    for kp in keypoints:
+        kp.pt = (int(kp.pt[0]),int(kp.pt[1]))
     return keypoints
 
 def draw_keypoints(image: np.ndarray, keypoints: list[cv2.KeyPoint], show=False, write=False, filename="star_highlight.jpg") -> None:
