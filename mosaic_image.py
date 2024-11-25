@@ -90,6 +90,9 @@ class mosaic_image:
         :param str filename: Filename to save write as
         
         '''
+        if not self.__keypoints:
+            self.__get_stars()
+        
         new_image = np.copy(self.original)
         for keypoint in self.__keypoints:
             x, y = int(keypoint.pt[0]), int(keypoint.pt[1])  # Keypoint coordinates
