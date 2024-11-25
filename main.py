@@ -55,14 +55,40 @@ def draw_keypoints(image: np.ndarray, keypoints: list[cv2.KeyPoint], show=False,
     if write:
         cv2.imwrite(filename,new_image)
 
+def get_relationships(image: np.ndarray, keypoints: list[cv2.KeyPoint], size:float=.25):
+    max_distance = (image.shape[0] if image.shape[0] > image.shape[1] else image.shape[1]) * size
+    
+    for keypoint in keypoints:
+        in_range = []
+        points = np.array([int(keypoint.pt[0]),int(keypoint.pt[1])])
+        for neighbor in keypoints:
+            neighbor_points = (int(neighbor.pt[0]),int(neighbor.pt[1]))
+            if abs(neighbor_points[0] - points[0]) > max_distance or abs(neighbor_points[1] - points[1]) > max_distance:
+                continue
+            in_range.append(neighbor_points)
+        # This section was used for the distance picture creation
+        # copy_image = image.copy()
+        # for point in in_range:
+            #cv2.line(copy_image,points,(int(point.pt[0]),int(point.pt[1])),color=(0,255,0),thickness=1)
+        # cv2.imwrite(f"neighborhoods/{points[0]}-{points[1]}.jpg",copy_image)
+        in_range = np.array(in_range)
+        vectors = in_range - points
+        angles_radians = np.arctan2(vectors[:, 1], vectors[:, 0])
+        
+        pass
+    pass
 
 def main() -> None:
     f_name = "burr_oak_colors"
     filename = f"test_images/{f_name}.jpg"
     orig_image = cv2.imread(filename,cv2.IMREAD_COLOR)
+    
     processed_image = preprocessor(orig_image)
     keypoints = get_stars(processed_image)
+    get_relationships(orig_image, keypoints)
     draw_keypoints(orig_image,keypoints,write=True)
+    
+    pass
 
 
 if __name__ == "__main__":
