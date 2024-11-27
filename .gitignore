@@ -2,3 +2,4 @@
 /neighborhoods
 /__pycache__/
 *.jpg
+*.cache

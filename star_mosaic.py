@@ -67,7 +67,7 @@ class star_mosaic:
         cv2.imwrite("image-2-overlapping-keypoints.jpg",img2)
             
         
-    def combine_images(self):
+    def combine_images(self) -> np.ndarray:
         matching_points = self.match_keypoints()
 
         im1_pt = []
@@ -123,7 +123,7 @@ class star_mosaic:
         cv2.imwrite("pivot-2.jpg",copy2)
         ####### END UNECESSARY
         
-        pass
+        return shifted
     
 
 def open_cache(filename):
