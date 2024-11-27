@@ -22,4 +22,4 @@ if __name__ == "__main__":
     f_name = "burr_oak_colors"
     filename = f"test_images/{f_name}.jpg"
     orig_image = cv2.imread(filename,cv2.IMREAD_COLOR)
-    partition_image(orig_image,imwrite=True,filename=f"{f_name}-split")
+    partition_image(orig_image,imwrite=True,)
