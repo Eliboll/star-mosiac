@@ -1,104 +1,106 @@
-from scipy.optimize import linear_sum_assignment
+# from scipy.optimize import linear_sum_assignment
 from joblib import Parallel, delayed
 import numpy as np
+import cupy as cp
 
-def normalize_angles(angle_list):
-    """
-    Normalize angles to the range [0, 2π] and sort them for comparison.
-    """
-    angles = [angle % (2 * np.pi) for angle in angle_list]
-    ref_angle = min(angles) if angles else 0
-    return sorted([(angle - ref_angle) % (2 * np.pi) for angle in angles])
+# perfect allignment
+THRESHOLD = 100000
 
+# 180 flipped
+# THRESHOLD = 40000
 
-def compute_angular_signature(point_data):
-    """
-    Compute the angular signature using differences relative to sorted angles.
-    """
-    angles = [angle % (2 * np.pi) for _, angle in point_data]
-    if not angles:
-        return []
-    angles = sorted(angles)
-    differences = [(angles[i] - angles[i - 1]) % (2 * np.pi) for i in range(len(angles))]
-    return sorted(differences)
+# # 10 flipped
+# THRESHOLD = 21000
 
-def compute_signature_distance_partial(sig1, sig2, max_cost=np.pi / 4):
-    """
-    Compute the distance between two angular signatures allowing for partial matches.
+MAX_RES = 0
 
-    :param sig1: First angular signature (sorted list of angles).
-    :param sig2: Second angular signature (sorted list of angles).
-    :param max_cost: Maximum angle mismatch allowed for matching.
-    :return: The distance between the two signatures and the match percentage.
-    """
-    sig1 = np.array(sig1)
-    sig2 = np.array(sig2)
-
-    # Create a cost matrix for angle differences
-    cost_matrix = np.abs(sig1[:, None] - sig2[None, :])
-    cost_matrix = np.minimum(cost_matrix, 2 * np.pi - cost_matrix)  # Handle circular differences
-
-    # Solve the assignment problem
-    row_ind, col_ind = linear_sum_assignment(cost_matrix)
-
-    # Calculate the total cost and count valid matches
-    total_cost = 0
-    valid_matches = 0
-    for r, c in zip(row_ind, col_ind):
-        if cost_matrix[r, c] < max_cost:
-            total_cost += cost_matrix[r, c]
-            valid_matches += 1
-
-    # Normalize the cost by the number of matches
-    if valid_matches > 0:
-        average_cost = total_cost / valid_matches
-    else:
-        average_cost = float('inf')  # No valid matches
-
-    match_ratio = valid_matches / max(len(sig1), len(sig2))
-    return average_cost, match_ratio
+BLACKLIST = []
 
 
+def new_find_matching_points_parallel(plane1,plane2):
+    import time
+    start = time.time()
+    
+    plane1 = get_star_lookup_matrix(plane1)
+    plane2 = get_star_lookup_matrix(plane2)
+    
+    end = time.time()
+    print(f"calculation took {end - start:.2f} seconds")
 
-def match_single_point(point1, signature1, plane2_signatures, cost_threshold, match_ratio_threshold):
-    """
-    Match a single point in Plane 1 against all points in Plane 2.
-    """
-    best_match = None
-    best_cost = float('inf')
-    best_ratio = 0
-
-    for point2, signature2 in plane2_signatures.items():
-        cost, match_ratio = compute_signature_distance_partial(signature1, signature2)
-
-        if cost < best_cost and match_ratio > match_ratio_threshold and cost < cost_threshold:
-            best_match = point2
-            best_cost = cost
-            best_ratio = match_ratio
-
-    if best_match:
-        return (point1, best_match, best_cost, best_ratio)
-    else:
-        return None
+    return find_matches(plane1,plane2)
 
 
-def find_matching_points_parallel(plane1, plane2, cost_threshold=0.1, match_ratio_threshold=0.5, n_jobs=-1):
-    """
-    Match points between two planes using parallel processing.
-    """
-    # Precompute angular signatures for all points in both planes
-    plane1_signatures = {point: compute_angular_signature(data) for point, data in plane1.items()}
-    plane2_signatures = {point: compute_angular_signature(data) for point, data in plane2.items()}
+def get_star_lookup_matrix(plane):
+    new_dict = {}
+    for key in plane.keys():
+        new_dict[key] = {}
+        new_dict[key]["matrix"]    = find_angles(key,plane[key])
+        new_dict[key]["points"]    = cp.array([x[0] for x in plane[key]])
+        #new_dict[key]["distances"] = get_vector_lengths(key,new_dict[key]["points"])
+    return new_dict
 
-    # Parallelize the matching process
-    results = Parallel(n_jobs=n_jobs)(
-        delayed(match_single_point)(
-            point1, signature1, plane2_signatures, cost_threshold, match_ratio_threshold
+def find_angles(main_pt, neighbors,rounding=5):
+    main_pt = cp.array(main_pt)
+    neighbors = cp.array([x[0] for x in neighbors])
+    vectors = neighbors - main_pt
+    angles = cp.arctan2(vectors[:,1], vectors[:,0])
+    
+    #pairwise
+    angle_matrix = angles[:, None] - angles[None, :]
+    angle_matrix = cp.mod(angle_matrix + cp.pi, 2 * cp.pi) - cp.pi
+    return cp.round(angle_matrix,decimals=rounding)
+
+def get_vector_lengths(point, neighbors):
+    vectors = neighbors - cp.array(point)
+    return cp.linalg.norm(vectors,axis=1)
+
+def find_matches(plane1_dict, plane2_dict):
+    results = []
+    prepped_params = []
+    for image_1_star in plane1_dict.keys():
+        prepped_params.append((plane1_dict[image_1_star]['matrix'],plane2_dict,image_1_star))
+    import time
+    start = time.time()
+    results = Parallel(n_jobs=-1)(
+        delayed(match_matrix_job)(
+            matrix,dictionary,point
         )
-        for point1, signature1 in plane1_signatures.items()
+        for matrix,dictionary,point in prepped_params
     )
 
     # Filter out None results (unmatched points)
-    matches = [match for match in results if match is not None]
-    matches = sorted(matches, key=lambda x: x[3], reverse=True)
+    #matches = [[np.ndarray(int(match[0][0]),int(match[0][1])),np.ndarray(int(match[0][0]),int(match[0][1]))] for match in results if match is not None]
+    matches = [x for x in results if x is not None]
+    end = time.time()
+    print(f"took {end - start:.2f} seconds")
+    global MAX_RES
+    print(f"Max Result: {MAX_RES}")
     return matches
+       
+def match_matrix_job(matrix, plane2_dict, origianl_star):
+    for image_2_star in plane2_dict.keys():
+        # if image_2_star in BLACKLIST:
+        #     continue
+        res = compare_matrixes(matrix,plane2_dict[image_2_star]['matrix'])
+        if res > THRESHOLD:
+            print(f"match located: ({origianl_star[0]:4},{origianl_star[1]:4}) -> ({image_2_star[0]:4},{image_2_star[1]:4}) | res= {res}")
+            global MAX_RES
+            MAX_RES = max(res,MAX_RES)
+
+            return (origianl_star,image_2_star)
+    return None
+            
+def compare_matrixes(matrix1,matrix2,tolerance=0.000001):
+
+    flat_matrix1 = matrix1.flatten()#cp.abs(matrix1.flatten())
+    flat_matrix2 = matrix2.flatten()#cp.abs(matrix2.flatten())
+    #matching_indices = cp.where([cp.any(cp.isclose(val, flat_matrix2, atol=tolerance)) for val in flat_matrix1])[0]
+    matching_indices = cp.where(cp.isin(flat_matrix1, flat_matrix2))[0]
+    rows, cols = cp.unravel_index(matching_indices, matrix1.shape)
+    filtered_cols = cols[rows != cols]
+    
+    return len(filtered_cols) #/ len(flat_matrix1)
+    
+if __name__ == "__main__":
+    from main import main
+    main()

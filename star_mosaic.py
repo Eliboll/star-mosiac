@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from mosaic_image import mosaic_image
-from match_keypoints import find_matching_points_parallel
+from match_keypoints import new_find_matching_points_parallel
 import time
 
 class star_mosaic:
@@ -36,15 +36,14 @@ class star_mosaic:
         img2_map = self.images[1].get_relationships()
             
         start = time.time()
-        raw_matches = find_matching_points_parallel(img1_map, img2_map, cost_threshold=0.5, match_ratio_threshold=0.5, n_jobs=-1)
+        # matcher = keypoint_match(img1_map, img2_map)
+        # matches = matcher.start()
         end = time.time()
         print(f"{end - start:.2f} second elapsed")
-        matches = []
-        for mat in raw_matches:
-            if mat[3] > .93:
-                matches.append(mat)
         
-        self.__matching_points = matches[:100]
+        matches = new_find_matching_points_parallel(img1_map,img2_map)
+
+        self.__matching_points = matches#matches[:100]
         self.show_keypoints(color=(0,255,0))
         #self.__matching_points = matches[:5]
         if self.__cache:
@@ -55,7 +54,9 @@ class star_mosaic:
         matching_points = self.match_keypoints()
         img1 = self.images[0].original.copy()
         img2 = self.images[1].original.copy()
-        for pt1,pt2,_,_ in matching_points:
+        for pt1,pt2 in matching_points:
+            pt1 = (pt1[0],pt1[1])
+            pt2 = (pt2[0],pt2[1])
             use_color = None
             if color==None:
                 use_color = deterministic_color_picker(pt1[0]+pt1[1])
@@ -116,9 +117,9 @@ class star_mosaic:
         self.images[1].draw_keypoints(write=True,filename="split-2-stars.jpg")
         copy1, copy2 = self.images[0].original.copy(), self.images[1].original.copy()
         for pt1,pt2 in zip(im1_pt,im2_pt):
-            color = deterministic_color_picker(pt1[0]+pt1[1]+pt2[1]+pt2[0])
-            cv2.line(copy1,img1_pivot,pt1,color=color,thickness=2)
-            cv2.line(copy2,img2_pivot,pt2,color=color,thickness=2)
+            color = deterministic_color_picker(abs(id(pt1) - id(pt2))) 
+            cv2.line(copy1,img1_pivot,pt1,color=color,thickness=1)
+            cv2.line(copy2,img2_pivot,pt2,color=color,thickness=1)
         cv2.imwrite("pivot-1.jpg",copy1)
         cv2.imwrite("pivot-2.jpg",copy2)
         ####### END UNECESSARY
@@ -133,16 +134,14 @@ def open_cache(filename):
             parts = line.split(',')
             c1 = (int(parts[0]), int(parts[1]))
             c2 = (int(parts[2]), int(parts[3]))
-            cost = float(parts[4])
-            ratio = float(parts[5])
-            cache.append((c1,c2,cost,ratio))
+            cache.append((c1,c2))
     return cache
             
             
 def write_cache(filename, matches):
     with open(filename,"w") as fp:
         for match in matches:
-            fp.write(f"{match[0][0]},{match[0][1]},{match[1][0]},{match[1][1]},{match[2]},{match[3]}\n")
+            fp.write(f"{match[0][0]},{match[0][1]},{match[1][0]},{match[1][1]}\n")
             
 def deterministic_color_picker(marker):
     # Generate a unique color based on marker index

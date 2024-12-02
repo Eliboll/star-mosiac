@@ -1,3 +1,4 @@
 opencv-python
-numpy
+cupy-12x
 scipy
+joblib
